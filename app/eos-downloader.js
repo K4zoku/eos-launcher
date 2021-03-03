@@ -1,126 +1,142 @@
 const fs = require('fs');
-const readline = require('readline');
-const {google} = require('googleapis');
+const open = require('open');
 const md5File = require('md5-file');
+const { google } = require('googleapis');
+const { ask } = require('../util/prompt.js');
+const { readFile, writeFile, exists } = require('../util/fs-promises.js');
 
-// If modifying these scopes, delete token.json.
-const SCOPES = ['https://www.googleapis.com/auth/drive.metadata.readonly', 'https://www.googleapis.com/auth/drive.readonly'];
-// The file token.json stores the user's access and refresh tokens, and is
-// created automatically when the authorization flow completes for the first
-// time.
-const TOKEN_PATH = 'token.json';
+const { TOKEN_FILE_PATH, LOCAL_FILE_PATH, REMOTE_FILE_ID, SCOPES } = require('../config.json');
 
-module.exports = {
-    load
+module.exports = { runApp }
+
+function runApp(args = []) {
+    authorize()
+    .then(client => checkForUpdate(client))
+    .catch(err => console.error(err.message));
 }
 
-function load() {
-// Load client secrets from a local file.
-    fs.readFile('credentials.json', (err, content) => {
-        if (err) return console.log('Error loading client secret file:', err);
-        // Authorize a client with credentials, then call the Google Drive API.
-        authorize(JSON.parse(content.toString()), checkCurrent);
+
+function authorize() {
+    const {client_secret, client_id, redirect_uris} = require('../credentials.json')['installed'];
+    const client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
+    return exists(TOKEN_FILE_PATH)
+    .then(exists => {
+        if (exists) return loadToken(TOKEN_FILE_PATH);
+        else {
+            let p = requestNewToken(client);
+            p.then(token => saveToken(token));
+            return p;
+        }
+    })
+    .then(token => {
+        client.setCredentials(token);
+        return client;
     });
 }
 
-
-function authorize(credentials, callback) {
-    const {client_secret, client_id, redirect_uris} = credentials['installed'];
-    const oAuth2Client = new google.auth.OAuth2(
-        client_id, client_secret, redirect_uris[0]);
-
-    // Check if we have previously stored a token.
-    fs.readFile(TOKEN_PATH, (err, token) => {
-        if (err) return getAccessToken(oAuth2Client, callback);
-        oAuth2Client.setCredentials(JSON.parse(token.toString()));
-        callback(oAuth2Client);
-    });
-}
-
-function getAccessToken(oAuth2Client, callback) {
-    const authUrl = oAuth2Client.generateAuthUrl({
+function requestNewToken(client) {
+    const authUrl = client.generateAuthUrl({
         access_type: 'offline',
         scope: SCOPES,
     });
     console.log('Authorize this app by visiting this url:', authUrl);
-    const open = require('open');
     open(authUrl);
-    const rl = readline.createInterface({
-        input: process.stdin,
-        output: process.stdout,
-    });
-    rl.question('Enter the code from that page here: ', (code) => {
-        rl.close();
-        oAuth2Client.getToken(code, (err, token) => {
-            if (err) return console.error('Error retrieving access token', err);
-            oAuth2Client.setCredentials(token);
-            // Store the token to disk for later program executions
-            fs.writeFile(TOKEN_PATH, JSON.stringify(token), (err) => {
-                if (err) return console.error(err);
-                console.log('Token stored to', TOKEN_PATH);
-            });
-            callback(oAuth2Client);
-        });
-    });
+    return ask('Enter the code you get from that page here: ')
+    .then(code => getToken(client, code));
 }
 
-const fileId = '15orxKbmGm4foV5Lpc0RYnz9Imvp3IbWF';
+function getToken(client, code) {
+    return client.getTokenAsync({code: code}).then(r => r.tokens);
+}
 
-function checkCurrent(auth) {
-    const drive = google.drive({version: 'v3', auth});
-    drive.files.get({
+function saveToken(token) {
+    return writeFile(TOKEN_FILE_PATH, JSON.stringify(token));
+}
+
+function loadToken(file) {
+    return readFile(file).then(data => JSON.parse(data.toString()));
+}
+
+function checkForUpdate(client) {
+    const driveOpts = {
+        version: 'v3', 
+        auth: client
+    };
+
+    const getOpts = {
         supportsAllDrives: true,
         includeItemsFromAllDrives: true,
-        fileId: fileId,
+        fileId: REMOTE_FILE_ID,
         fields: 'size, md5Checksum'
-    }).then(({data}) => {
+    };
+    const drive = google.drive(driveOpts);
+
+    return drive.files
+    .get(getOpts)
+    .then(({data}) => {
         const md5 = data['md5Checksum'];
         const size = data['size'];
-        md5File('./EOS-Client.zip')
-            .then(hash => {
-                return hash === md5;
-            }).then(matched => {
-            if (matched) console.log("Congratulation, you are using latest version!");
-            else {
-                console.log("You are using old version, performing download new version...");
-                downloadEos(drive, size);
+        const filepath = './EOS-Client.zip';
+        exists(filepath)
+        .then(exists => {
+            if (exists) {
+                return md5File(filepath)
+                    .then(hash => {
+                    if (hash === md5) {
+                        console.log("Congratulation, you are using latest version!");
+                        return true;
+                    } else {
+                        console.log("You are using old version, performing download new version...");
+                        return downloadEos(drive, size);
+                    }
+                });
+            } else {
+                console.log("EOS-Client not exists, downloading new one...");
+                return downloadEos(drive, size);
             }
         });
-    }).catch(console.error);
+    });
 }
 
 function downloadEos(drive, size) {
-    drive.files.get({
+
+    const getOpts = {
         alt: "media",
         supportsAllDrives: true,
         includeItemsFromAllDrives: true,
-        fileId: fileId,
-    }, {responseType: "stream",})
-        .then(res => {
-            return new Promise((resolve, reject) => {
-                const filePath = './EOS-Client.zip';
-                console.log(`Downloading to ${filePath}`);
-                const dest = fs.createWriteStream(filePath);
-                let progress = 0;
-                res.data
-                    .on('end', () => {
-                        console.log('\nDone downloading file.');
-                        resolve(filePath);
-                    })
-                    .on('error', err => {
-                        console.error('Error downloading file.');
-                        reject(err);
-                    })
-                    .on('data', d => {
-                        progress += d.length;
-                        const percent = ((progress / size) * 100).toFixed(2);
-                        if (process.stdout.isTTY) {
-                            process.stdout.clearLine();
-                            process.stdout.cursorTo(0);
-                            process.stdout.write(`Downloaded ${percent}%`);
-                        }
-                    })
-                    .pipe(dest);
-            });
-        });
+        fileId: REMOTE_FILE_ID
+    };
+
+    const resOpts = {
+        responseType: "stream"
+    }
+
+    return drive.files
+    .get(getOpts, resOpts)
+    .then(res => 
+        new Promise((resolve, reject) => {
+            console.log(`Downloading to ${LOCAL_FILE_PATH}`);
+            const dest = fs.createWriteStream(LOCAL_FILE_PATH);
+            let progress = 0;
+            res.data
+            .on('end', () => {
+                console.log('\nDone downloading file.');
+                resolve(LOCAL_FILE_PATH);
+            })
+            .on('error', err => {
+                console.error('Error downloading file.');
+                reject(err);
+            })
+            .on('data', d => {
+                progress += d.length;
+                const percent = ((progress / size) * 100).toFixed(0);
+                if (process.stdout.isTTY) {
+                    process.stdout.clearLine();
+                    process.stdout.cursorTo(0);
+                    process.stdout.write(`Downloaded ${percent}%`);
+                }
+            })
+            .pipe(dest);
+        })
+    );
 }

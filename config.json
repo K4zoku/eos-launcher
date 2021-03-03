@@ -1,0 +1,9 @@
+{
+	"TOKEN_FILE_PATH": "./token.json",
+	"LOCAL_FILE_PATH": "./EOS-Client.zip",
+	"REMOTE_FILE_ID": "15orxKbmGm4foV5Lpc0RYnz9Imvp3IbWF",
+	"SCOPES": [
+		"https://www.googleapis.com/auth/drive.readonly",
+		"https://www.googleapis.com/auth/drive.metadata.readonly"
+	]
+}

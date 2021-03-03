@@ -1,1 +1,1 @@
-require('./app/eos-downloader.js').load();
+require('./app/eos-downloader.js').runApp();
