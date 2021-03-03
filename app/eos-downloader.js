@@ -21,7 +21,7 @@ function authorize() {
     const client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
     return exists(TOKEN_FILE_PATH)
     .then(exists => {
-        if (exists) return loadToken(TOKEN_FILE_PATH);
+        if (exists) return loadToken();
         else {
             let p = requestNewToken(client);
             p.then(token => saveToken(token));
@@ -53,8 +53,8 @@ function saveToken(token) {
     return writeFile(TOKEN_FILE_PATH, JSON.stringify(token));
 }
 
-function loadToken(file) {
-    return readFile(file).then(data => JSON.parse(data.toString()));
+function loadToken() {
+    return readFile(TOKEN_FILE_PATH).then(data => JSON.parse(data.toString()));
 }
 
 function checkForUpdate(client) {
