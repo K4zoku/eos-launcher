@@ -1,10 +1,10 @@
 const {createWriteStream, createReadStream} = require("fs");
-const {unlink, exists, readdir, mkdtemp, writeFile} = require("mz/fs");
+const {unlink, rmdir, exists, readdir, mkdtemp, writeFile} = require("mz/fs");
 const path = require("path");
 const os = require("os");
 const unzipper = require("unzipper");
 const EOSDownloader = require("./app/EOSDownloader");
-const spawn = require("child_process").spawnSync;
+const {spawnSync} = require("child_process");
 
 function download(opts) {
 	return new Promise(async (resolve, reject) => {
@@ -57,30 +57,24 @@ async function launchEOS(dir) {
 	let files = await readdir(dir);
 	let exe = path.join(dir, files.filter(file => file.endsWith(".exe"))[0]);
 	process.stdout.write(`Executable: ${exe}\n`);
+	process.stdout.write(`Working directory: ${dir}\n`);
 	process.stdout.write("Launching...\n");
 	let vbscript = [
-		`Set UAC = CreateObject^("Shell.Application"^)`,
-		`UAC.ShellExecute "${exe}", , , "runas", 1`
+		`Set UAC = CreateObject("Shell.Application")`,
+		`UAC.ShellExecute "${exe}", , "${dir}", "runas", 1`
 	].join("\n");
-	let tmpdir = await mkdtemp(path.join(os.tmpdir(), "eos-launcher-"));
-	let vbsFile = path.join(tmpdir, "launcher.vbs");
-	await writeFile(vbsFile, vbscript);
-	let wbscriptExe = "C:\\System32\\wbscript.exe";
-	if (!(await exists(wbscriptExe))) {
-		wbscriptExe = "C:\\Windows\\SysWOW64\\wbscript.exe";
+	const tmpdir = await mkdtemp(path.join(os.tmpdir(), "eos-"));
+	const vbs = path.join(tmpdir, "launcher.vbs");
+	await writeFile(vbs, vbscript);
+	let status = spawnSync("wscript.exe", [vbs]).status;
+	await unlink(vbs);
+	await rmdir(tmpdir);
+	if (status == 0) {
+		process.stdout.write("EOS launched successfully!\n");
+		return 0;
+	} else {
+		return status ?? 1;
 	}
-	if (!(await exists(wbscriptExe))) {
-		process.stderr.write("wbscript.exe not found, cannot automatically launch EOSClient with administrator privilege!\n");
-		process.stderr.write("Don't worry, you can still run as administrator manually!\n");
-		return;
-	}
-	let executed = spawn(wbscriptExe, [vbsFile]);
-	await unlink(vbsFile);
-	let out = executed.stdout ? executed.stdout.toString() : "";
-	let err = executed.stderr ? executed.stderr.toString() : "";
-	if (out) process.stdout.write(`${out}\n`);
-	if (err) process.stderr.write(`${err}\n`);
-	return executed.status ?? 1;
 }
 
 async function main(args) {
