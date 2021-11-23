@@ -1,11 +1,11 @@
 const open = require("open");
 const md5 = require("md5-file");
 const {google} = require("googleapis");
-const {prompt} = require("../util/prompt.js");
+const {prompt, inputbox} = require("../util/prompt.js");
 const {exists} = require("mz/fs");
 const TokenSerializer = require("./TokenSerializer");
 
-module.exports = class EOSDownloader {
+module.exports = class GDDownloader {
 	#client;
 	#drive;
 	#tokenPath;
@@ -33,9 +33,26 @@ module.exports = class EOSDownloader {
         		],
     		});
     		process.stdout.write(`Authorize this app by visiting this url: ${authUrl}\n`);
-    		open(authUrl);
-    		const code = await prompt("Enter the code you get from that page here: ");
-    		token = await this.#client.getTokenAsync({code}).then(result => result.tokens);
+    		await open(authUrl);
+    		let code;
+    		if (process.args["gui"] || process.args["g"]) {
+    			code = await inputbox("FPT Google Drive Authorization", "Enter the code you get from that page here: ", true);
+    			code = code.split("\n");
+    			if (code[code.length - 1] == "") {
+    				code.pop();
+    			}
+    			code = code.pop();
+    		} else {
+    			code = await prompt("Enter the code you get from that page here: ");
+    		}
+    		process.stdout.write(`You entered: "${code}"\n`);
+    		try {
+    			token = await this.#client.getTokenAsync({code}).then(result => result.tokens);
+    		} catch(e) {
+    			process.stderr.write("Invalid code, cannot get token\n");
+    			process.exitCode = 1;
+    			process.exit();
+    		}
     		await serializer.save(token);
 		}
 		this.#client.setCredentials(token);

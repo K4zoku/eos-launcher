@@ -1,5 +1,6 @@
 node_modules
-.idea
-EOS-Client.zip
+*.zip
 token.json
+credentials.json
 package-lock.json
+dist

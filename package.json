@@ -1,24 +1,30 @@
 {
-  "name": "eos-downloader",
+  "name": "eos-launcher",
   "version": "1.0.0",
   "description": "yes",
-  "repository": "github.com/takahatashun/eos-downloader",
+  "repository": "https://github.com/takahatashun/eos-launcher",
   "main": "index.js",
+  "bin": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "build": "pkg . -C Gzip"
   },
   "keywords": [],
-  "author": "",
+  "author": "kazoku",
   "license": "ISC",
   "dependencies": {
     "@google-cloud/local-auth": "^1.0.1",
-    "async": "^3.2.0",
-    "dotenv": "^8.2.0",
     "googleapis": "^67.1.1",
     "md5-file": "^5.0.0",
     "minimist": "^1.2.5",
     "mz": "^2.7.0",
     "open": "^8.0.1",
     "unzipper": "^0.10.11"
+  },
+  "pkg": {
+    "targets": [
+      "node14-win"
+    ],
+    "outputPath": "dist"
   }
 }
