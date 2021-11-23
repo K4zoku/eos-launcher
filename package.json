@@ -1,6 +1,6 @@
 {
   "name": "eos-launcher",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "yes",
   "repository": "https://github.com/takahatashun/eos-launcher",
   "main": "index.js",
